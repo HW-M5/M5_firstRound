@@ -109,4 +109,5 @@ def createModel(trainX, y_train):
 
 if __name__ == '__main__':
     X_train,y_train,X_test,y_test= dataSet()
-    print(X_train)
+    #below start to train process...
+    createModel(trainX, y_train)
