@@ -4,18 +4,25 @@ import numpy as np
 from sklearn.preprocessing import MinMaxScaler
 from sklearn import preprocessing
 import datetime as dt
+from datetime import datetime
 import matplotlib.pyplot as plt
 import re
 from tqdm import tqdm
-
-
+from keras.callbacks import ModelCheckpoint, EarlyStopping
+from keras.models import Sequential
+from keras.layers import Dense
+from keras.layers import LSTM,Dropout
+from keras.layers import RepeatVector,TimeDistributed
+from keras.models import Sequential, load_model
 
 #===============define data path =============================#
 rootPath = os.getcwd()
-
 train_sales= pd.read_csv(os.path.join(rootPath,"sales_train_validation.csv"))
 sell_prices= pd.read_csv(os.path.join(rootPath,"sell_prices.csv"))
 calendar= pd.read_csv(os.path.join(rootPath,"calendar.csv"))
+currentDate = datetime.today().strftime('%Y-%m-%d')
+n_features = 9
+n_out_seq_length =28
 
 def reduce_mem_usage(df, verbose=True):
     numerics = ['int16', 'int32', 'int64', 'float16', 'float32', 'float64']
@@ -81,10 +88,8 @@ def Normalize2(list,low,high):
             list[i] = (list[i]-low)/delta
     return  list
 
-if __name__ == '__main__':
-    # X_train,y_train,X_test,y_test= dataSet()
-    # #below start to train process...
-    # createModel(trainX, y_train)
+def dataSet():
+    global train_sales,sell_prices,calendar,n_out_seq_length,n_features
 
     num=30490 #traindata(items)
     days = range(1, 1970)
@@ -129,43 +134,42 @@ if __name__ == '__main__':
     X_train = train_n[:,-28*2:-28,:]
     y = train_n[:,-28:,8]  #     
     # reshape from [samples, timesteps] into [samples, timesteps, features]
-    n_features = 9
-    n_out_seq_length =28
-    num_y = 1
+
     X_train = X_train.reshape((X_train.shape[0], X_train.shape[1], n_features))
     y_train = y.reshape((y.shape[0], y.shape[1], 1))
     print(X_train.shape)
+    return X_train,y_train,n_features
 
+def createModel():
+    global currentDate,n_out_seq_length,n_features
     # define model
-    from keras.models import Sequential
-    from keras.layers import Dense
-    from keras.layers import LSTM,Dropout
-    from keras.layers import RepeatVector,TimeDistributed
-    from keras.models import Sequential, load_model
-    from keras.callbacks import ModelCheckpoint, EarlyStopping
-
-    ckptCallback = ModelCheckpoint('ckpt0429.h5',monitor='val_loss',verbose=0,save_best_only=True,save_weights_only=True,mode='auto',period=2)
-
     model = Sequential()
-
-    
-    model.add(LSTM(128, activation='relu', input_shape=(28, n_features),return_sequences=False))
+    model.add(LSTM(128, activation='selu', input_shape=(28, n_features),return_sequences=False))
     model.add(RepeatVector(n_out_seq_length))
-    model.add(LSTM(32, activation='relu',return_sequences=True))
-   #model.add(Dropout(0.1))  
-    model.add(TimeDistributed(Dense(num_y)))   # num_y means the shape of y,in some problem(like translate), it can be many.
+    model.add(LSTM(32, activation='selu',return_sequences=True))
+    #model.add(Dropout(0.1))  
+    model.add(TimeDistributed(Dense(1)))   # num_y means the shape of y,in some problem(like translate), it can be many.
                                                 #In that case, you should set the  activation= 'softmax'
     model.compile(optimizer='adam', loss='mse')
     # demonstrate prediction
-    history=model.fit(X_train, y_train, epochs=20, batch_size=512,callbacks=[ckptCallback])
+    return model 
+   
+
+if __name__ == '__main__':
+    #data generate
+    X_train, y_train, n_features = dataSet() 
+    model =createModel()
+    ckptCallback = ModelCheckpoint(f"{currentDate}.h5",monitor='loss',verbose=0,save_best_only=True,save_weights_only=True,mode='auto',period=30)
+    history=model.fit(X_train, y_train, epochs=1000, batch_size=512,callbacks=[ckptCallback])
     model.save('lastest_0429.h5')
     plt.plot(history.history['loss'])
     plt.title('model loss')
     plt.ylabel('loss')
     plt.xlabel('epoch')
     plt.legend(['train', 'validation'], loc = 'upper right')
-    plt.savefig('best_0429.png')
+    plt.savefig(f"{currentDate}.png")
 
+    # prediction process
     x_input = np.array(X_train[:,-n_steps*1:])
     x_input = x_input.reshape((num, n_steps*1, n_features))
     print(x_input.shape)
